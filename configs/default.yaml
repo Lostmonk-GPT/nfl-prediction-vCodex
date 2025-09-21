@@ -1,0 +1,9 @@
+paths:
+  data_dir: data
+  duckdb_path: data/nfl.duckdb
+mlflow:
+  tracking_uri: ./mlruns
+features:
+  windows:
+    short: 4
+    mid: 8
