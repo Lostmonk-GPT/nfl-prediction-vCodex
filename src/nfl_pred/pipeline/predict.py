@@ -16,6 +16,7 @@ import pandas as pd
 
 from nfl_pred.config import load_config
 from nfl_pred.logging_setup import setup_logging
+from nfl_pred.picks import assign_pick_confidence
 from nfl_pred.storage.duckdb_client import DuckDBClient
 
 LOGGER = logging.getLogger(__name__)
@@ -224,9 +225,6 @@ def _to_game_level_predictions(
             home_norm = home_prob / total
             away_norm = 1.0 - home_norm
 
-        pick = "home" if home_norm >= away_norm else "away"
-        confidence = float(max(home_norm, away_norm))
-
         records.append(
             {
                 "game_id": game_id,
@@ -235,8 +233,6 @@ def _to_game_level_predictions(
                 "asof_ts": asof_ts,
                 "p_home_win": float(home_norm),
                 "p_away_win": float(away_norm),
-                "pick": pick,
-                "confidence": confidence,
                 "model_id": model_id,
                 "snapshot_at": snapshot_at,
             }
@@ -245,6 +241,22 @@ def _to_game_level_predictions(
     predictions_df = pd.DataFrame.from_records(records)
     predictions_df["snapshot_at"] = predictions_df["snapshot_at"].apply(_ensure_utc_timestamp)
     predictions_df["asof_ts"] = predictions_df["asof_ts"].apply(_ensure_utc_timestamp)
+
+    predictions_df = assign_pick_confidence(predictions_df)
+    predictions_df = predictions_df[
+        [
+            "game_id",
+            "season",
+            "week",
+            "asof_ts",
+            "p_home_win",
+            "p_away_win",
+            "pick",
+            "confidence",
+            "model_id",
+            "snapshot_at",
+        ]
+    ]
 
     return predictions_df
 
