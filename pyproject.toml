@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nfl-prediction"
+version = "0.0.0"
+description = "NFL Game Outcome Prediction — project scaffold"
+authors = [{ name = "AI Builder", email = "" }]
+readme = "README.md"
+requires-python = ">=3.11"
