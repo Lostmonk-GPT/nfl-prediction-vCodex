@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     p_home_win DOUBLE,
     p_away_win DOUBLE,
     pick VARCHAR,
-    confidence DOUBLE,
+    confidence VARCHAR,
     model_id VARCHAR NOT NULL,
     snapshot_at TIMESTAMP NOT NULL,
     PRIMARY KEY (game_id, season, week, asof_ts, model_id)
