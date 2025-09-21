@@ -9,6 +9,7 @@ from .models import (  # noqa: F401
     RidgeModel,
 )
 from .splits import time_series_splits  # noqa: F401
+from .stacking import StackingEnsemble, generate_out_of_fold_predictions  # noqa: F401
 
 __all__ = [
     "BaselineClassifier",
@@ -18,4 +19,6 @@ __all__ = [
     "RidgeModel",
     "GradientBoostingModel",
     "MODEL_PARAM_GRIDS",
+    "StackingEnsemble",
+    "generate_out_of_fold_predictions",
 ]
