@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -10,6 +11,7 @@ from nfl_pred.weather.meteostat_client import (
     MeteostatClientError,
     StationRecord,
 )
+from nfl_pred.weather.storage import WeatherArtifactStore
 
 
 class _StationsStub:
@@ -126,16 +128,14 @@ def test_nearest_station_raises_when_outside_radius() -> None:
         client.nearest_station(40.0, -75.0)
 
 
-def test_hourly_normalization_converts_units_and_persists_raw() -> None:
-    raw_calls: list[tuple[str, dict]] = []
-
-    def capture_raw(key: str, payload: dict) -> None:
-        raw_calls.append((key, payload))
-
+def test_hourly_normalization_converts_units_and_persists_raw(tmp_path: Path) -> None:
+    store = WeatherArtifactStore(base_dir=tmp_path)
     client = MeteostatClient(
         stations_factory=lambda: _StationsStub(pd.DataFrame()),
         hourly_cls=_HourlyStub,
-        raw_store=capture_raw,
+        artifact_store=store,
+        artifact_version="test-suite",
+        artifact_ttl_seconds=3600.0,
     )
 
     result = client.hourly("TEST", datetime(2024, 1, 1), datetime(2024, 1, 2))
@@ -147,10 +147,19 @@ def test_hourly_normalization_converts_units_and_persists_raw() -> None:
     assert record["wind_gust_mps"] == pytest.approx(10.0)
     assert record["time"].startswith("2024-01-01T12:00:00")
 
-    assert raw_calls
-    key, payload = raw_calls[0]
-    assert key.startswith("meteostat/hourly/TEST/")
-    assert payload["records"][0]["temp"] == 10.0
+    artifact = store.load(
+        "meteostat",
+        "hourly",
+        {
+            "station_id": "TEST",
+            "start": datetime(2024, 1, 1).isoformat(),
+            "end": datetime(2024, 1, 2).isoformat(),
+        },
+    )
+    assert artifact is not None
+    assert artifact.payload["records"][0]["temp"] == 10.0
+    assert artifact.metadata.version == "test-suite"
+    assert artifact.metadata.ttl_expires_at is not None
 
 
 def test_daily_normalization_supports_station_record_input() -> None:

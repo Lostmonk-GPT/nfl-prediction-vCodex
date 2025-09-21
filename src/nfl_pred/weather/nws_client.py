@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, MutableMapping, Protocol
 
 import requests
 
+from .storage import WeatherArtifactStore
 
 class ResponseProtocol(Protocol):
     """Protocol describing the subset of ``requests.Response`` that we use."""
@@ -33,9 +34,6 @@ class TransportProtocol(Protocol):
         timeout: float | tuple[float, float] | None = None,
     ) -> ResponseProtocol:  # pragma: no cover - interface declaration
         """Perform an HTTP request and return a response object."""
-
-
-RawStore = Callable[[str, Mapping[str, Any]], None]
 
 
 class NWSClientError(RuntimeError):
@@ -93,7 +91,8 @@ class NWSClient:
         user_agent: str = _DEFAULT_USER_AGENT,
         timeout: float = 10.0,
         transport: TransportProtocol | None = None,
-        raw_store: RawStore | None = None,
+        artifact_store: WeatherArtifactStore | None = None,
+        artifact_version: str = "unknown",
         metadata_cache_ttl: float | None = 6 * 60 * 60,
         forecast_cache_ttl: float | None = 15 * 60,
         max_retries: int = 3,
@@ -104,7 +103,8 @@ class NWSClient:
         self.base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._transport = transport
-        self._raw_store = raw_store
+        self._artifact_store = artifact_store
+        self._artifact_version = artifact_version
         self._headers = {
             "User-Agent": user_agent,
             "Accept": "application/geo+json",
@@ -116,6 +116,8 @@ class NWSClient:
 
         self._point_cache = _TTLCache(metadata_cache_ttl, self._now)
         self._forecast_cache = _TTLCache(forecast_cache_ttl, self._now)
+        self._metadata_artifact_ttl = metadata_cache_ttl
+        self._forecast_artifact_ttl = forecast_cache_ttl
         self._session: requests.Session | None = None
 
     # ------------------------------------------------------------------
@@ -130,7 +132,11 @@ class NWSClient:
             return cached
 
         path = f"points/{lat},{lon}"
-        payload = self._request_json(path)
+        payload = self._request_json(
+            path,
+            ttl_seconds=self._metadata_artifact_ttl,
+            params=None,
+        )
         normalized = _normalize_point_metadata(payload, lat, lon)
         self._point_cache.set(cache_key, normalized)
         return normalized
@@ -155,7 +161,11 @@ class NWSClient:
         if hourly:
             endpoint += "/hourly"
 
-        payload = self._request_json(endpoint)
+        payload = self._request_json(
+            endpoint,
+            ttl_seconds=self._forecast_artifact_ttl,
+            params=None,
+        )
         normalized = _normalize_forecast(payload)
         self._forecast_cache.set(cache_key, normalized)
         return normalized
@@ -166,7 +176,9 @@ class NWSClient:
     def _request_json(
         self,
         endpoint: str,
+        *,
         params: Mapping[str, Any] | None = None,
+        ttl_seconds: float | None = None,
     ) -> Mapping[str, Any]:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         transport = self._transport or self._get_session()
@@ -196,11 +208,7 @@ class NWSClient:
                 break
 
             payload = response.json()
-            if self._raw_store is not None:
-                try:
-                    self._raw_store(endpoint, payload)
-                except Exception:  # pragma: no cover - defensive
-                    pass
+            self._persist_raw(endpoint=endpoint, params=params, payload=payload, ttl_seconds=ttl_seconds)
             return payload
 
         if last_error is None:
@@ -220,6 +228,28 @@ class NWSClient:
         # Exponential backoff with jitter-friendly minimum floor.
         delay = self._backoff_factor * (2 ** attempt)
         return max(0.1, delay)
+
+    def _persist_raw(
+        self,
+        *,
+        endpoint: str,
+        params: Mapping[str, Any] | None,
+        payload: Mapping[str, Any],
+        ttl_seconds: float | None,
+    ) -> None:
+        if self._artifact_store is None:
+            return
+        try:
+            self._artifact_store.save(
+                source="nws",
+                endpoint=endpoint,
+                params=params or {},
+                payload=payload,
+                version=self._artifact_version,
+                ttl_seconds=ttl_seconds,
+            )
+        except Exception:  # pragma: no cover - defensive
+            pass
 
 
 # ----------------------------------------------------------------------

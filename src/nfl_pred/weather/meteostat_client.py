@@ -10,7 +10,7 @@ from typing import Any, Callable, Mapping, Protocol
 import pandas as pd
 from meteostat import Daily, Hourly, Stations
 
-RawStore = Callable[[str, Mapping[str, Any]], None]
+from .storage import WeatherArtifactStore
 
 
 class MeteostatClientError(RuntimeError):
@@ -48,13 +48,17 @@ class MeteostatClient:
         hourly_cls: type[Hourly] = Hourly,
         daily_cls: type[Daily] = Daily,
         max_station_distance_miles: float = 10.0,
-        raw_store: RawStore | None = None,
+        artifact_store: WeatherArtifactStore | None = None,
+        artifact_version: str = "unknown",
+        artifact_ttl_seconds: float | None = None,
     ) -> None:
         self._stations_factory = stations_factory or Stations
         self._hourly_cls = hourly_cls
         self._daily_cls = daily_cls
         self._max_distance_miles = max_station_distance_miles
-        self._raw_store = raw_store
+        self._artifact_store = artifact_store
+        self._artifact_version = artifact_version
+        self._artifact_ttl_seconds = artifact_ttl_seconds
 
     # ------------------------------------------------------------------
     # Station utilities
@@ -95,7 +99,15 @@ class MeteostatClient:
         fetcher = self._hourly_cls(station_id, start, end)
         df = fetcher.fetch()
         payload = _payload_from_frame(df)
-        self._persist_raw(f"hourly/{station_id}/{start.isoformat()}_{end.isoformat()}", payload)
+        self._persist_raw(
+            endpoint="hourly",
+            params={
+                "station_id": station_id,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
+            payload=payload,
+        )
         return _normalize_hourly(df, station_id)
 
     def daily(
@@ -110,17 +122,38 @@ class MeteostatClient:
         fetcher = self._daily_cls(station_id, start, end)
         df = fetcher.fetch()
         payload = _payload_from_frame(df)
-        self._persist_raw(f"daily/{station_id}/{start.isoformat()}_{end.isoformat()}", payload)
+        self._persist_raw(
+            endpoint="daily",
+            params={
+                "station_id": station_id,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
+            payload=payload,
+        )
         return _normalize_daily(df, station_id)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _persist_raw(self, key: str, payload: Mapping[str, Any]) -> None:
-        if self._raw_store is None:
+    def _persist_raw(
+        self,
+        *,
+        endpoint: str,
+        params: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        if self._artifact_store is None:
             return
         try:
-            self._raw_store(f"meteostat/{key}", payload)
+            self._artifact_store.save(
+                source="meteostat",
+                endpoint=endpoint,
+                params=params,
+                payload=payload,
+                version=self._artifact_version,
+                ttl_seconds=self._artifact_ttl_seconds,
+            )
         except Exception:  # pragma: no cover - defensive
             pass
 
