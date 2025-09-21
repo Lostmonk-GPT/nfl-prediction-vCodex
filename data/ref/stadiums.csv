@@ -1,0 +1,31 @@
+venue,teams,lat,lon,tz,altitude_ft,surface,roof,neutral_site
+Allegiant Stadium,LV,36.09085,-115.18331,America/Los_Angeles,670,artificial_turf,dome,false
+Acrisure Stadium,PIT,40.446804,-80.015728,America/New_York,732,natural_grass,open,false
+AT&T Stadium,DAL,32.7473,-97.09451,America/Chicago,640,artificial_turf,retractable,false
+Bank of America Stadium,CAR,35.225805,-80.852861,America/New_York,748,natural_grass,open,false
+Caesars Superdome,NO,29.951061,-90.081254,America/Chicago,3,artificial_turf,dome,false
+Cleveland Browns Stadium,CLE,41.506053,-81.699564,America/New_York,584,natural_grass,open,false
+Empower Field at Mile High,DEN,39.743936,-105.020097,America/Denver,5280,natural_grass,open,false
+EverBank Stadium,JAX,30.323925,-81.637356,America/New_York,16,natural_grass,open,false
+FedExField,WAS,38.907701,-76.864517,America/New_York,338,natural_grass,open,false
+Ford Field,DET,42.339958,-83.045639,America/Detroit,610,artificial_turf,dome,false
+GEHA Field at Arrowhead Stadium,KC,39.048939,-94.483865,America/Chicago,1060,natural_grass,open,false
+Gillette Stadium,NE,42.090944,-71.264348,America/New_York,289,artificial_turf,open,false
+Hard Rock Stadium,MIA,25.958056,-80.238889,America/New_York,7,natural_grass,open,false
+Highmark Stadium,BUF,42.773758,-78.786837,America/New_York,751,natural_grass,open,false
+Lambeau Field,GB,44.501341,-88.062217,America/Chicago,640,natural_grass,open,false
+Levi's Stadium,SF,37.403,-121.9702,America/Los_Angeles,17,natural_grass,open,false
+Lincoln Financial Field,PHI,39.900771,-75.167468,America/New_York,26,natural_grass,open,false
+Lumen Field,SEA,47.595151,-122.331632,America/Los_Angeles,21,artificial_turf,open,false
+Lucas Oil Stadium,IND,39.760056,-86.163806,America/Indiana/Indianapolis,720,artificial_turf,retractable,false
+M&T Bank Stadium,BAL,39.278057,-76.622706,America/New_York,35,natural_grass,open,false
+Mercedes-Benz Stadium,ATL,33.755403,-84.400864,America/New_York,1020,artificial_turf,retractable,false
+MetLife Stadium,NYG|NYJ,40.813528,-74.074361,America/New_York,16,artificial_turf,open,false
+Nissan Stadium,TEN,36.166383,-86.77129,America/Chicago,466,natural_grass,open,false
+NRG Stadium,HOU,29.684722,-95.410833,America/Chicago,49,artificial_turf,retractable,false
+Paycor Stadium,CIN,39.095442,-84.516039,America/New_York,482,natural_grass,open,false
+Raymond James Stadium,TB,27.975967,-82.50335,America/New_York,26,natural_grass,open,false
+SoFi Stadium,LAC|LAR,33.953514,-118.338661,America/Los_Angeles,98,artificial_turf,indoors,false
+State Farm Stadium,ARI,33.527625,-112.262538,America/Phoenix,1070,natural_grass,retractable,false
+Soldier Field,CHI,41.862313,-87.616688,America/Chicago,587,natural_grass,open,false
+U.S. Bank Stadium,MIN,44.973489,-93.257128,America/Chicago,840,artificial_turf,dome,false
