@@ -1,0 +1,34 @@
+{
+  "type": "Feature",
+  "geometry": null,
+  "properties": {
+    "updated": "2024-10-10T10:00:00+00:00",
+    "generatedAt": "2024-10-10T09:59:00+00:00",
+    "units": "us",
+    "elevation": {
+      "value": 200.0,
+      "unitCode": "wmoUnit:m"
+    },
+    "periods": [
+      {
+        "number": 1,
+        "name": "Game Time",
+        "startTime": "2024-10-10T17:00:00+00:00",
+        "endTime": "2024-10-10T20:00:00+00:00",
+        "isDaytime": true,
+        "temperature": 72,
+        "temperatureUnit": "F",
+        "temperatureTrend": null,
+        "probabilityOfPrecipitation": {
+          "value": 40,
+          "unitCode": "wmoUnit:percent"
+        },
+        "windSpeed": "12 mph",
+        "windDirection": "S",
+        "windGust": "18 mph",
+        "shortForecast": "Partly Cloudy",
+        "detailedForecast": "Partly cloudy with light winds."
+      }
+    ]
+  }
+}
