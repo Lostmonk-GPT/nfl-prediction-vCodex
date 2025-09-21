@@ -20,6 +20,22 @@ def _escape_identifier(name: str) -> str:
     return f'"{escaped}"'
 
 
+def _table_exists(connection: duckdb.DuckDBPyConnection, table: str) -> bool:
+    """Return ``True`` when ``table`` exists in the connected database."""
+
+    if hasattr(connection, "table_exists"):
+        return bool(connection.table_exists(table))  # type: ignore[attr-defined]
+
+    query = """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE lower(table_name) = lower(?)
+        LIMIT 1
+    """
+    result = connection.execute(query, (table,)).fetchone()
+    return result is not None
+
+
 _TABLE_MODES = {"create", "replace", "append"}
 
 
@@ -82,7 +98,7 @@ class DuckDBClient(AbstractContextManager["DuckDBClient"]):
             elif mode == "replace":
                 self.connection.execute(f"CREATE OR REPLACE TABLE {identifier} AS SELECT * FROM {temp_view}")
             else:  # append
-                if not self.connection.table_exists(table):
+                if not _table_exists(self.connection, table):
                     raise RuntimeError(f"Table '{table}' does not exist for append mode.")
                 self.connection.execute(f"INSERT INTO {identifier} SELECT * FROM {temp_view}")
         finally:
