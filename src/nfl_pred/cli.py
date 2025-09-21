@@ -21,6 +21,7 @@ from nfl_pred.reporting.metrics import (
     save_reliability_report,
 )
 from nfl_pred.storage.duckdb_client import DuckDBClient
+from nfl_pred.snapshot import DEFAULT_SNAPSHOT_STAGES, SnapshotStage, run_snapshot_workflow
 
 
 app = typer.Typer(help="Operations CLI for ingestion, feature building, training, and reporting.")
@@ -83,6 +84,34 @@ def _resolve_latest_model_artifact(models_dir: Path) -> Path:
             "No model artifacts found. Run training or provide --model-path explicitly."
         )
     return candidates[0]
+
+
+def _build_stage_schedule(
+    kickoff_ts: pd.Timestamp,
+    *,
+    final_only: bool = False,
+) -> tuple[dict[str, list[pd.Timestamp]], list[SnapshotStage]]:
+    """Construct the default snapshot schedule relative to kickoff."""
+
+    kickoff_utc = kickoff_ts.tz_convert("UTC")
+
+    schedule: dict[str, list[pd.Timestamp]] = {
+        "T-24h": [kickoff_utc - pd.Timedelta(hours=24)],
+        "T-100m": [kickoff_utc - pd.Timedelta(minutes=100)],
+        "T-80-75m": [
+            kickoff_utc - pd.Timedelta(minutes=80),
+            kickoff_utc - pd.Timedelta(minutes=75),
+        ],
+        "T-60m": [kickoff_utc - pd.Timedelta(minutes=60)],
+    }
+
+    if final_only:
+        stages = [stage for stage in DEFAULT_SNAPSHOT_STAGES if stage.name == "T-60m"]
+        if not stages:
+            raise RuntimeError("T-60m stage definition missing from DEFAULT_SNAPSHOT_STAGES.")
+        return {"T-60m": schedule["T-60m"]}, stages
+
+    return schedule, list(DEFAULT_SNAPSHOT_STAGES)
 
 
 @app.command()
@@ -234,6 +263,78 @@ def predict(
     typer.echo(
         f"Generated {len(inference.predictions_df)} predictions for season {season} week {week}."
     )
+
+
+@app.command()
+def snapshot(
+    season: int = typer.Option(..., help="Season to snapshot."),
+    week: int = typer.Option(..., help="Week to snapshot."),
+    kickoff_at: str = typer.Option(..., "--at", help="Scheduled kickoff timestamp (ISO 8601)."),
+    feature_set: str = typer.Option("mvp_v1", help="Feature set identifier used for features and predictions."),
+    model_path: Optional[Path] = typer.Option(
+        None, help="Path to trained model artifact (.joblib) for prediction stage.", file_okay=True, dir_okay=False
+    ),
+    model_id: Optional[str] = typer.Option(None, help="Override model identifier stored with predictions."),
+    config: Optional[Path] = typer.Option(
+        None, "--config", help="Path to configuration YAML.", exists=True, dir_okay=False
+    ),
+    final_only: bool = typer.Option(
+        False,
+        "--final-only/--full-timeline",
+        help="Run only the T-60m freeze instead of the full T-24h→T-60m sequence.",
+    ),
+) -> None:
+    """Run the snapshot workflow for a given season and week."""
+
+    setup_logging()
+    config_path = _resolve_config_path(config)
+    kickoff_ts = _parse_timestamp(kickoff_at)
+    if kickoff_ts is None:
+        raise typer.BadParameter("A kickoff timestamp must be provided via --at <iso8601>.")
+
+    config_obj = load_config(config_path)
+    models_dir = Path(config_obj.paths.data_dir) / "models"
+
+    stage_schedule, stages = _build_stage_schedule(kickoff_ts, final_only=final_only)
+    requires_model = any(stage.produce_predictions for stage in stages)
+
+    resolved_model_path: Optional[Path] = None
+    if requires_model:
+        if model_path is None:
+            try:
+                resolved_model_path = _resolve_latest_model_artifact(models_dir)
+            except FileNotFoundError as exc:
+                raise typer.BadParameter(
+                    "No model artifact found. Provide --model-path or train a model before running snapshots."
+                ) from exc
+        else:
+            resolved_model_path = model_path
+
+        if not resolved_model_path.exists():
+            raise typer.BadParameter(f"Model artifact '{resolved_model_path}' does not exist.")
+
+    executions = run_snapshot_workflow(
+        season=season,
+        week=week,
+        stage_times=stage_schedule,
+        feature_set=feature_set,
+        model_path=resolved_model_path,
+        model_id=model_id,
+        config_path=config_path,
+        stages=stages,
+    )
+
+    typer.echo(
+        f"Executed {len(executions)} snapshot stage runs for season {season} week {week} with kickoff {kickoff_ts.isoformat()}"
+    )
+
+    prediction_execs = [execution for execution in executions if execution.prediction_result is not None]
+    if prediction_execs:
+        final_exec = prediction_execs[-1]
+        prediction_count = len(final_exec.prediction_result.predictions_df)
+        typer.echo(
+            f"Generated {prediction_count} predictions at snapshot {final_exec.timestamp.isoformat()} using model {final_exec.prediction_result.model_id}."
+        )
 
 
 @app.command()
