@@ -14,6 +14,13 @@ from nfl_pred.features.build_features import build_and_store_features
 from nfl_pred.ingest import ingest_pbp, ingest_rosters, ingest_schedules, ingest_teams
 from nfl_pred.logging_setup import setup_logging
 from nfl_pred.pipeline import run_inference_pipeline, run_training_pipeline
+from nfl_pred.reporting.expanded import (
+    ExpandedMetricConfig,
+    build_expanded_metrics,
+    plot_expanded_metric,
+    prepare_report_records,
+    save_expanded_metrics,
+)
 from nfl_pred.reporting.metrics import (
     compute_classification_metrics,
     compute_reliability_table,
@@ -361,7 +368,7 @@ def report(
             """
             SELECT game_id, season, week, asof_ts, p_home_win, p_away_win, model_id, snapshot_at
             FROM predictions
-            WHERE season = ? AND week = ?
+            WHERE season = ? AND week <= ?
             """,
             [season, week],
         )
@@ -371,12 +378,12 @@ def report(
             raise typer.Exit(code=1)
 
         schedule = _load_raw_schedule(config_path, [season])
-        schedule_week = schedule.loc[schedule["week"] == week].copy()
-        if schedule_week.empty:
+        schedule_slice = schedule.loc[schedule["week"] <= week].copy()
+        if schedule_slice.empty:
             typer.echo("No schedule rows available for the requested season/week.")
             raise typer.Exit(code=1)
 
-        merged = predictions.merge(schedule_week, on=["season", "week", "game_id"], how="inner")
+        merged = predictions.merge(schedule_slice, on=["season", "week", "game_id"], how="inner")
         if merged.empty:
             typer.echo("Unable to join predictions with schedule results for evaluation.")
             raise typer.Exit(code=1)
@@ -385,14 +392,21 @@ def report(
         merged["away_score"] = pd.to_numeric(merged.get("away_score"), errors="coerce")
 
         score_mask = merged[["home_score", "away_score"]].notna().all(axis=1)
-        merged = merged.loc[score_mask].copy()
-        if merged.empty:
+        evaluation_df = merged.loc[score_mask].copy()
+        if evaluation_df.empty:
             typer.echo("Schedule rows are missing final scores; cannot compute metrics.")
             raise typer.Exit(code=1)
 
-        merged["label_home_win"] = (merged["home_score"] > merged["away_score"]).astype(int)
+        evaluation_df["label_home_win"] = (
+            evaluation_df["home_score"] > evaluation_df["away_score"]
+        ).astype(int)
 
-        metrics_input = merged[["p_home_win", "label_home_win"]].copy()
+        current_week_df = evaluation_df.loc[evaluation_df["week"] == week].copy()
+        if current_week_df.empty:
+            typer.echo("No completed games found for the requested week.")
+            raise typer.Exit(code=1)
+
+        metrics_input = current_week_df[["p_home_win", "label_home_win"]].copy()
         metrics = compute_classification_metrics(
             metrics_input,
             probability_column="p_home_win",
@@ -406,13 +420,50 @@ def report(
         )
 
         timestamp = datetime.now(timezone.utc)
-        asof_ts = pd.to_datetime(predictions["asof_ts"], utc=True, errors="coerce").max()
+        asof_series = pd.to_datetime(
+            predictions.loc[predictions["week"] == week, "asof_ts"],
+            utc=True,
+            errors="coerce",
+        )
+        asof_ts = asof_series.max()
+        if pd.isna(asof_ts):
+            asof_ts = timestamp
 
         metrics_name = f"metrics_s{season}_w{week}.csv"
         reliability_name = f"reliability_s{season}_w{week}.csv"
         save_metrics_report(metrics, reports_dir=reports_dir, name=metrics_name)
         save_reliability_report(reliability, reports_dir=reports_dir, name=reliability_name)
 
+        expanded_config = ExpandedMetricConfig()
+        expanded_metrics = build_expanded_metrics(
+            evaluation_df,
+            probability_column="p_home_win",
+            label_column="label_home_win",
+            config=expanded_config,
+        )
+        expanded_name = f"expanded_metrics_s{season}_w{week}.csv"
+        save_expanded_metrics(expanded_metrics, reports_dir=reports_dir, name=expanded_name)
+
+        plot_targets = [
+            ("weekly", "weekly_brier"),
+            ("season_to_date", "season_to_date_brier"),
+            (f"rolling_{expanded_config.rolling_window}", f"rolling{expanded_config.rolling_window}_brier"),
+        ]
+        for window_label, stem in plot_targets:
+            try:
+                plot_expanded_metric(
+                    expanded_metrics,
+                    metric="brier_score",
+                    window=window_label,
+                    season=season,
+                    reports_dir=reports_dir,
+                    name=f"{stem}_s{season}_w{week}.png",
+                    config=expanded_config,
+                )
+            except ValueError:
+                continue
+
+        report_frames: list[pd.DataFrame] = []
         report_records = []
         for column in ("brier_score", "log_loss"):
             if column in metrics.columns:
@@ -426,9 +477,23 @@ def report(
                         "snapshot_at": timestamp,
                     }
                 )
-
         if report_records:
-            report_df = pd.DataFrame.from_records(report_records)
+            report_frames.append(pd.DataFrame.from_records(report_records))
+
+        expanded_week = expanded_metrics.loc[
+            expanded_metrics[expanded_config.week_column] == week
+        ]
+        expanded_records = prepare_report_records(
+            expanded_week,
+            asof_ts=asof_ts,
+            snapshot_at=timestamp,
+            config=expanded_config,
+        )
+        if not expanded_records.empty:
+            report_frames.append(expanded_records)
+
+        if report_frames:
+            report_df = pd.concat(report_frames, ignore_index=True)
             client.write_df(report_df, table="reports", mode="append")
 
     typer.echo(
