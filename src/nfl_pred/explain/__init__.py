@@ -1,5 +1,10 @@
 """Explainability utilities for model interpretation."""
 
+from nfl_pred.explain.artifacts import (
+    ArtifactMetadata,
+    ArtifactRecord,
+    ExplainabilityArtifactManager,
+)
 from nfl_pred.explain.shap_utils import (
     ShapArtifacts,
     ShapConfig,
@@ -9,6 +14,9 @@ from nfl_pred.explain.shap_utils import (
 )
 
 __all__ = [
+    "ArtifactMetadata",
+    "ArtifactRecord",
+    "ExplainabilityArtifactManager",
     "ShapArtifacts",
     "ShapConfig",
     "ShapResult",
