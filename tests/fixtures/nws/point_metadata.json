@@ -1,0 +1,32 @@
+{
+  "id": "point-metadata",
+  "type": "Feature",
+  "geometry": {
+    "type": "Point",
+    "coordinates": [-97.0945, 32.7473]
+  },
+  "properties": {
+    "gridId": "FWD",
+    "gridX": 42,
+    "gridY": 65,
+    "forecast": "https://api.weather.gov/gridpoints/FWD/42,65/forecast",
+    "forecastHourly": "https://api.weather.gov/gridpoints/FWD/42,65/forecast/hourly",
+    "observationStations": "https://api.weather.gov/gridpoints/FWD/42,65/stations",
+    "timeZone": "America/Chicago",
+    "relativeLocation": {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-97.093, 32.750]
+      },
+      "properties": {
+        "city": "Arlington",
+        "state": "TX",
+        "distance": {
+          "unitCode": "wmoUnit:km",
+          "value": 8.0
+        }
+      }
+    }
+  }
+}

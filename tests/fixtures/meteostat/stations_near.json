@@ -1,0 +1,18 @@
+[
+  {
+    "id": "722596",
+    "name": "Arlington Municipal",
+    "latitude": 32.7500,
+    "longitude": -97.1000,
+    "elevation": 189.0,
+    "timezone": "America/Chicago"
+  },
+  {
+    "id": "722597",
+    "name": "Dallas Love Field",
+    "latitude": 32.8481,
+    "longitude": -96.8518,
+    "elevation": 148.0,
+    "timezone": "America/Chicago"
+  }
+]
