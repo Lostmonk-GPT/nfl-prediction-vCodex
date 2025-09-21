@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -46,6 +47,13 @@ class DuckDBClient(AbstractContextManager["DuckDBClient"]):
     def execute(self, sql: str, params: Mapping[str, Any] | None = None) -> duckdb.DuckDBPyConnection:
         """Execute a SQL statement, useful for DDL or imperative commands."""
         return self.connection.execute(sql, params)
+
+    def apply_schema(self, schema_path: str | Path | None = None) -> None:
+        """Apply the project schema from disk (defaults to ``schema.sql`` next to this module)."""
+
+        path = Path(schema_path) if schema_path is not None else Path(__file__).with_name("schema.sql")
+        schema_sql = path.read_text(encoding="utf-8")
+        self.connection.execute(schema_sql)
 
     def read_sql(self, sql: str, params: Mapping[str, Any] | None = None) -> DataFrame:
         """Run a SQL query and return the results as a pandas ``DataFrame``."""
