@@ -41,6 +41,7 @@ from nfl_pred.features.schedule_meta import compute_schedule_meta
 from nfl_pred.features.team_week import compute_team_week_features
 from nfl_pred.features.travel import compute_travel_features
 from nfl_pred.features.weather import compute_weather_features
+from nfl_pred.snapshot.visibility import VisibilityContext, filter_schedule
 from nfl_pred.storage.duckdb_client import DuckDBClient
 from nfl_pred.ref.stadiums import load_stadiums
 
@@ -121,11 +122,16 @@ def build_and_store_features(
     else:
         asof_ts = None
 
-    schedule_filtered = _filter_schedule(schedule, asof_ts=asof_ts)
+    schedule_context = VisibilityContext(asof_ts=asof_ts)
+    schedule_filtered = _filter_schedule(schedule, context=schedule_context)
 
     team_week_features = compute_team_week_features(pbp, asof_ts=asof_ts)
-    schedule_meta = compute_schedule_meta(schedule_filtered)
-    travel_features = compute_travel_features(schedule_filtered, team_locations=team_locations)
+    schedule_meta = compute_schedule_meta(schedule_filtered, asof_ts=asof_ts)
+    travel_features = compute_travel_features(
+        schedule_filtered,
+        team_locations=team_locations,
+        asof_ts=asof_ts,
+    )
 
     if stadiums is None:
         stadiums = load_stadiums()
@@ -171,17 +177,18 @@ def build_and_store_features(
     return FeatureBuildResult(features_df=features_df, payload_df=payload_df)
 
 
-def _filter_schedule(schedule: pd.DataFrame, *, asof_ts: pd.Timestamp | None) -> pd.DataFrame:
-    """Return a schedule frame restricted to data visible at ``asof_ts``."""
+def _filter_schedule(schedule: pd.DataFrame, *, context: VisibilityContext) -> pd.DataFrame:
+    """Return a schedule frame restricted to data visible at ``context.asof_ts``."""
 
     working = schedule.copy()
+    working = filter_schedule(working, context=context, kickoff_column="start_time")
+
+    if working.empty:
+        return working
+
     working["season"] = working["season"].astype(int)
     working["week"] = working["week"].astype(int)
     working["start_time"] = pd.to_datetime(working["start_time"], utc=True, errors="coerce")
-
-    if asof_ts is not None:
-        mask = working["start_time"].isna() | (working["start_time"] <= asof_ts)
-        working = working.loc[mask].copy()
 
     return working
 

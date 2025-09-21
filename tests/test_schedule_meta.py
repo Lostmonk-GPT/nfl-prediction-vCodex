@@ -116,3 +116,13 @@ def test_compute_schedule_meta_kickoff_buckets_and_site() -> None:
 
     away = meta.loc[(meta["game_id"] == "2023_04_JAX_HOU") & (meta["team"] == "HOU")]
     assert away["home_away"].iloc[0] == "away"
+
+
+def test_compute_schedule_meta_respects_asof_cutoff() -> None:
+    schedule = _schedule_frame()
+
+    cutoff = pd.Timestamp("2023-09-18T00:00:00Z")
+    meta = compute_schedule_meta(schedule, asof_ts=cutoff)
+
+    assert meta["week"].max() == 2
+    assert set(meta["game_id"]) <= {"2023_01_NE_MIA", "2023_01_DAL_NYG", "2023_01_NO_CAR", "2023_02_PHI_NE", "2023_02_MIA_DEN"}

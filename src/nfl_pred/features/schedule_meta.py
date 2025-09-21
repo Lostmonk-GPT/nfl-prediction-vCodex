@@ -48,6 +48,8 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
+from nfl_pred.snapshot.visibility import VisibilityContext, filter_schedule
+
 _REQUIRED_COLUMNS: Final[set[str]] = {
     "season",
     "week",
@@ -58,13 +60,19 @@ _REQUIRED_COLUMNS: Final[set[str]] = {
 }
 
 
-def compute_schedule_meta(schedule: pd.DataFrame) -> pd.DataFrame:
+def compute_schedule_meta(
+    schedule: pd.DataFrame,
+    *,
+    asof_ts: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     """Derive per-team schedule metadata features.
 
     Args:
         schedule: Raw schedule frame containing at least the required columns
             listed in ``_REQUIRED_COLUMNS`` and optionally ``weekday``,
             ``neutral_site``, or ``location``.
+        asof_ts: Optional visibility cut-off. Games scheduled strictly after
+            the timestamp are excluded before computing rest/metadata features.
 
     Returns:
         ``DataFrame`` with one row per team/game including rest, kickoff
@@ -72,7 +80,12 @@ def compute_schedule_meta(schedule: pd.DataFrame) -> pd.DataFrame:
     """
 
     _validate_schedule(schedule)
-    working = schedule.copy()
+    context = VisibilityContext(asof_ts=asof_ts)
+    working = filter_schedule(schedule, context=context, kickoff_column="start_time")
+    if working.empty:
+        return working.copy()
+
+    working = working.copy()
 
     working["season"] = working["season"].astype(int)
     working["week"] = working["week"].astype(int)
