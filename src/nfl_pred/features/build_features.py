@@ -9,6 +9,7 @@ payload contains:
 * Schedule context (rest, kickoff buckets, home/away) from
   :mod:`nfl_pred.features.schedule_meta`.
 * Travel metrics derived in :mod:`nfl_pred.features.travel`.
+* Weather context derived in :mod:`nfl_pred.features.weather` when available.
 * A minimal training label (`label_team_win`) computed from final scores.
 
 Null policy
@@ -30,7 +31,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -39,7 +40,12 @@ from nfl_pred.config import load_config
 from nfl_pred.features.schedule_meta import compute_schedule_meta
 from nfl_pred.features.team_week import compute_team_week_features
 from nfl_pred.features.travel import compute_travel_features
+from nfl_pred.features.weather import compute_weather_features
 from nfl_pred.storage.duckdb_client import DuckDBClient
+from nfl_pred.ref.stadiums import load_stadiums
+
+if TYPE_CHECKING:  # pragma: no cover - imported for type hints only
+    from nfl_pred.weather import MeteostatClient, NWSClient
 
 
 @dataclass(slots=True)
@@ -62,6 +68,9 @@ def build_and_store_features(
     schedule: pd.DataFrame,
     *,
     team_locations: pd.DataFrame | None = None,
+    stadiums: pd.DataFrame | None = None,
+    nws_client: NWSClient | None = None,
+    meteostat_client: MeteostatClient | None = None,
     asof_ts: pd.Timestamp | None = None,
     snapshot_at: pd.Timestamp | None = None,
     feature_set: str = "mvp_v1",
@@ -79,6 +88,12 @@ def build_and_store_features(
         team_locations: Optional coordinates used by
             :func:`~nfl_pred.features.travel.compute_travel_features` when venue
             latitude/longitude are missing.
+        stadiums: Optional authoritative stadium reference. When omitted, the
+            table is loaded via :func:`nfl_pred.ref.stadiums.load_stadiums`.
+        nws_client: Optional :class:`~nfl_pred.weather.NWSClient` for weather
+            forecasts.
+        meteostat_client: Optional :class:`~nfl_pred.weather.MeteostatClient`
+            for historical weather backfill.
         asof_ts: Optional cutoff timestamp. Play-by-play rows and schedule
             entries strictly after this instant are ignored to avoid leakage.
             When omitted, all available data are used.
@@ -112,10 +127,22 @@ def build_and_store_features(
     schedule_meta = compute_schedule_meta(schedule_filtered)
     travel_features = compute_travel_features(schedule_filtered, team_locations=team_locations)
 
+    if stadiums is None:
+        stadiums = load_stadiums()
+
+    weather_features = compute_weather_features(
+        schedule_filtered,
+        stadiums,
+        nws_client=nws_client,
+        meteostat_client=meteostat_client,
+        asof_ts=asof_ts,
+    )
+
     assembled = _join_feature_components(
         schedule_meta=schedule_meta,
         travel_features=travel_features,
         team_week_features=team_week_features,
+        weather_features=weather_features,
     )
 
     scores = _extract_scores(schedule_filtered)
@@ -164,6 +191,7 @@ def _join_feature_components(
     schedule_meta: pd.DataFrame,
     travel_features: pd.DataFrame,
     team_week_features: pd.DataFrame,
+    weather_features: pd.DataFrame,
 ) -> pd.DataFrame:
     """Join schedule, travel, and team-week frames into a single feature table."""
 
@@ -181,6 +209,12 @@ def _join_feature_components(
             on=["season", "week", "team"],
             how="left",
         )
+
+    merged = merged.merge(
+        weather_features,
+        on=["season", "week", "game_id", "team"],
+        how="left",
+    )
 
     return merged
 
