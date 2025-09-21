@@ -21,6 +21,7 @@ dependencies = [
     "requests>=2.31",
     "meteostat>=1.6",
     "typer>=0.9",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
