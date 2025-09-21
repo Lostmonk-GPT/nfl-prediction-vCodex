@@ -40,3 +40,12 @@
    - Outputs: `data/reports/metrics_s2023_w18.csv` and `data/reliability_s2023_w18.csv`, plus summary rows in DuckDB table `reports`.
 
 Re-run steps 1–5 with different seasons/weeks as needed; predictions/reports require completed games in DuckDB schedules.
+
+## Weather Data Overview (AI-108)
+
+The modeling features incorporate both forecast and historical weather context:
+
+- **National Weather Service (NWS)** — [`NWSClient`](src/nfl_pred/weather/nws_client.py) first resolves stadium coordinates through `/points/{lat},{lon}` and then fetches `/gridpoints/{wfo}/{x},{y}/forecast` (or `/forecast/hourly`). Responses are normalized to Celsius, meters-per-second, and probability units inside the client, and downstream feature assembly converts them to Fahrenheit, miles-per-hour, and fractional precipitation. The client memoizes point metadata for 6 hours and forecasts for 15 minutes, and it persists raw JSON payloads under `data/weather/nws/` via the [`WeatherArtifactStore`](src/nfl_pred/weather/storage.py) with matching TTL metadata recorded in `manifest.json`.
+- **Meteostat fallback** — [`MeteostatClient`](src/nfl_pred/weather/meteostat_client.py) selects the nearest station within 10 miles and can supply hourly or daily backfill when a forecast is unavailable. Raw payloads are cached to `data/weather/meteostat/` through the same artifact store (no TTL is enforced by default), allowing offline replays of historical windows.
+- **Indoor / closed-roof policy** — [`compute_weather_features`](src/nfl_pred/features/weather.py) only applies weather readings when the authoritative stadium roof is `outdoor`, `open`, or `retractable`. Games marked as indoor/closed keep `wx_temp` as `NaN` and default `wx_wind`/`precip` to `0`, reflecting the absence of weather impact.
+
