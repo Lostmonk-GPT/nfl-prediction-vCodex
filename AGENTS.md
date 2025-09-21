@@ -134,7 +134,7 @@ Use this log for non-trivial problems, data anomalies, or production incidents.
 - Location of authoritative status: Update this section and also mirror to  if present.
 
 Current snapshot (to be updated by each agent):
-- As of: 2025-09-19
+- As of: 2025-01-27
 - Last completed:
   - PRD reviewed and understood.
   - Development plan created and saved: .
@@ -158,7 +158,8 @@ Current snapshot (to be updated by each agent):
   - [AI-016] Time-series split utilities implemented (`src/nfl_pred/model/splits.py`) providing forward-chaining CV by week.
   - [AI-017] Baseline classifier implemented (`src/nfl_pred/model/baseline.py`) with preprocessing pipeline and logistic regression.
   - [AI-018] Platt calibrator implemented (`src/nfl_pred/model/calibration.py`) wrapping baseline probabilities.
-  - [AI-019] Training pipeline implemented (`src/nfl_pred/pipeline/train.py`) with CV, calibration, MLflow logging, and model persistence.
+  - [AI-019] Training pipeline implemented (`src/nfl_pred/pipeline/train.py`, `tests/test_pipeline_train.py`) with cross-validation, holdout calibration, MLflow logging, artifact persistence, and reliability plots.
+  - DuckDB identifier escaping hardened for compatibility with multiple client versions (`src/nfl_pred/storage/duckdb_client.py`).
   - [AI-020] Inference pipeline implemented (`src/nfl_pred/pipeline/predict.py`) loading calibrated model and writing predictions.
   - [AI-021] Picks and confidence logic implemented (`src/nfl_pred/picks.py`) deriving pick + tier from probabilities.
   - [AI-023] CLI entrypoints implemented (`src/nfl_pred/cli.py`, `src/nfl_pred/__main__.py`) covering ingest, features, training, prediction, and reporting.
@@ -184,12 +185,11 @@ Current snapshot (to be updated by each agent):
 ### Handoff Snapshot (For Next Agent)
 When you finish your session, update this exact block at the top of the file or in .
 
-- Session: 2025-01-27 — Builder persona (AI-702 & Documentation Fixes)
-- Summary: 1) Fixed `docs/2024_season_walkthrough.md` with correct snapshot CLI syntax (ISO8601 timestamps) and proper DuckDB client usage patterns; 2) Created comprehensive weekly workflow automation suite: `scripts/run_weekly_workflow.py` (7-step Python pipeline), `scripts/weekly.sh` (bash wrapper), and `scripts/README.md` (complete documentation); 3) Fixed CLI command syntax issues through testing - corrected `monitor-psi` to use two positional args plus --week flag, and `evaluate-triggers` to use --season --week flags; 4) Achieved 100% success rate in dry-run validation of all workflow steps.
-- Next steps: 1) Optional AI-703 (secrets handling) for API key management; 2) Consider integrating caching layer (AI-702) into weather clients; 3) Weekly automation ready for production use with all command syntax validated.
-- Blockers: None — workflow automation fully functional with comprehensive error handling and CLI validation.
-- Notes: Weekly automation provides complete 7-step pipeline: data ingestion → feature building → PSI monitoring → trigger evaluation → optional retraining → predictions → reporting. All CLI commands validated and working. Documentation updated with correct syntax. Scripts support dry-run testing, flexible options (--retrain-check, --snapshots, --skip-monitoring), and comprehensive logging with success rate tracking.
-- Notes: Runbook integrates all previously implemented systems: CLI commands (11 total), snapshot timeline (T-24h/T-100m/T-80m/T-60m), monitoring capabilities (PSI drift, triggers, performance), model promotion workflows, MLflow integration, feature specifications, audit trails; procedures organized by day-of-week with clear objectives and checklists; emergency procedures and troubleshooting guide included; all commands tested against existing CLI structure; procedures designed for production operations with proper error handling and validation steps.
+- Session: 2025-01-27 — Forecaster persona (AI-019)
+- Summary: 1) Implemented the baseline training pipeline with forward-chaining CV, holdout calibration, MLflow logging, artifact persistence, and reliability plotting (`src/nfl_pred/pipeline/train.py`); 2) Added end-to-end regression test exercising the pipeline against a synthetic DuckDB feature store and verifying MLflow/artifact outputs (`tests/test_pipeline_train.py`); 3) Hardened DuckDB identifier escaping to support older duckdb builds lacking `escape_identifier` (`src/nfl_pred/storage/duckdb_client.py`).
+- Next steps: 1) Wire the inference pipeline (AI-020) to consume the saved model + calibrator package; 2) Expose pipeline controls via CLI/automation (scheduling, feature-set overrides); 3) Review configuration options for calibration window and CV folds against production PRD expectations.
+- Blockers: None — pipeline runs offline against synthetic features with local MLflow file store.
+- Notes: Training expects the DuckDB `features` table populated with JSON payload rows; calibration window must contain both win/loss examples. Artifacts land under `<data_dir>/models/` and MLflow uses the configured tracking URI. Reliability plot + config snapshot are logged alongside the model artifact for observability.
 
 ---
 

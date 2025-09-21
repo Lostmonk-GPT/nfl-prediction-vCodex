@@ -13,6 +13,13 @@ import duckdb
 from pandas import DataFrame
 
 
+def _escape_identifier(name: str) -> str:
+    if hasattr(duckdb, "escape_identifier"):
+        return duckdb.escape_identifier(name)  # type: ignore[attr-defined]
+    escaped = name.replace("\"", "\"\"")
+    return f'"{escaped}"'
+
+
 _TABLE_MODES = {"create", "replace", "append"}
 
 
@@ -67,7 +74,7 @@ class DuckDBClient(AbstractContextManager["DuckDBClient"]):
 
         temp_view = f"__df_{uuid4().hex}"
         self.connection.register(temp_view, df)
-        identifier = duckdb.escape_identifier(table)
+        identifier = _escape_identifier(table)
 
         try:
             if mode == "create":
@@ -83,7 +90,7 @@ class DuckDBClient(AbstractContextManager["DuckDBClient"]):
 
     def register_parquet(self, path: str, view: str) -> None:
         """Create or replace a view selecting from a Parquet file."""
-        identifier = duckdb.escape_identifier(view)
+        identifier = _escape_identifier(view)
         self.connection.execute(
             f"CREATE OR REPLACE VIEW {identifier} AS SELECT * FROM read_parquet(:path)",
             {"path": path},
