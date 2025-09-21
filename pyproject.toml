@@ -34,4 +34,4 @@ viz = [
 # Populate with canonical repository and documentation links when available.
 
 [project.scripts]
-# CLI entry points will be registered in a future task.
+nfl-pred = "nfl_pred.cli:main"
