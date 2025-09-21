@@ -60,6 +60,7 @@ import numpy as np
 import pandas as pd
 
 from nfl_pred.features.windows import RollingMetric, compute_group_rolling_windows
+from nfl_pred.snapshot.visibility import VisibilityContext, filter_play_by_play
 
 TEAM_WEEK_WINDOW_LENGTHS: Final[dict[str, int | None]] = {"w4": 4, "w8": 8, "season": None}
 
@@ -95,9 +96,8 @@ def _safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
 
 
 def _prepare_source_frame(pbp: pd.DataFrame, *, asof_ts: pd.Timestamp | None) -> pd.DataFrame:
-    working = pbp.copy()
-    if asof_ts is not None and "asof_ts" in working.columns:
-        working = working.loc[working["asof_ts"] <= asof_ts].copy()
+    context = VisibilityContext(asof_ts=asof_ts)
+    working = filter_play_by_play(pbp, context=context)
 
     _ensure_required_columns(working)
 

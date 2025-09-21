@@ -133,3 +133,12 @@ def test_compute_travel_features_missing_coordinates(sample_schedule: pd.DataFra
 
     london_rows = features[features["game_id"] == "2023_03_nyj_mia"]
     assert london_rows["travel_miles"].isna().all()
+
+
+def test_compute_travel_features_respects_asof_cutoff(sample_schedule: pd.DataFrame) -> None:
+    cutoff = pd.Timestamp("2023-09-18T00:00:00Z")
+
+    features = compute_travel_features(sample_schedule, asof_ts=cutoff)
+
+    assert features["week"].max() == 2
+    assert set(features["game_id"]) <= {"2023_01_buf_nyj", "2023_02_nyj_dal"}

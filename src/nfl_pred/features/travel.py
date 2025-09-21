@@ -26,6 +26,8 @@ from typing import Final, Iterable, Tuple
 import numpy as np
 import pandas as pd
 
+from nfl_pred.snapshot.visibility import VisibilityContext, filter_schedule
+
 _EARTH_RADIUS_MILES: Final = 3958.7613
 _REQUIRED_COLUMNS: Final[set[str]] = {
     "season",
@@ -105,7 +107,10 @@ def haversine_miles(
 
 
 def compute_travel_features(
-    schedule: pd.DataFrame, team_locations: pd.DataFrame | None = None
+    schedule: pd.DataFrame,
+    team_locations: pd.DataFrame | None = None,
+    *,
+    asof_ts: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Derive per-team travel metrics from the NFL schedule.
 
@@ -117,6 +122,8 @@ def compute_travel_features(
             "longitude"}`` providing best-available coordinates for each team.
             Used as a fallback when the schedule does not already contain
             explicit venue coordinates.
+        asof_ts: Optional visibility cut-off. Games starting strictly after the
+            timestamp are excluded before computing travel deltas.
 
     Returns:
         ``pandas.DataFrame`` with one row per ``(season, week, game_id, team)``
@@ -125,7 +132,12 @@ def compute_travel_features(
     """
 
     _validate_schedule(schedule)
-    working = schedule.copy()
+    context = VisibilityContext(asof_ts=asof_ts)
+    working = filter_schedule(schedule, context=context, kickoff_column="start_time")
+    if working.empty:
+        return working.copy()
+
+    working = working.copy()
 
     working["season"] = working["season"].astype(int)
     working["week"] = working["week"].astype(int)
