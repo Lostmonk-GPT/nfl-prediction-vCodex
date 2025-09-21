@@ -7,6 +7,7 @@ from .contracts import (
     assert_team_contract,
 )
 from .pbp import ingest_pbp
+from .injuries import ingest_injuries
 from .rosters import ingest_rosters, ingest_teams
 from .schedules import ingest_schedules
 
@@ -19,4 +20,5 @@ __all__ = [
     "ingest_pbp",
     "ingest_rosters",
     "ingest_teams",
+    "ingest_injuries",
 ]
