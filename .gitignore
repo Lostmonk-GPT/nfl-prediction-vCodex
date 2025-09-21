@@ -25,6 +25,8 @@ htmlcov/
 # Data and models (retain folders via .gitkeep)
 data/*
 !data/.gitkeep
+!data/ref/
+!data/ref/**
 
 # Artifacts
 dist/
