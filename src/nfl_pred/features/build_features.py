@@ -37,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from nfl_pred.config import load_config
+from nfl_pred.features.rules import append_rule_flags
 from nfl_pred.features.schedule_meta import compute_schedule_meta
 from nfl_pred.features.team_week import compute_team_week_features
 from nfl_pred.features.travel import compute_travel_features
@@ -127,6 +128,7 @@ def build_and_store_features(
 
     team_week_features = compute_team_week_features(pbp, asof_ts=asof_ts)
     schedule_meta = compute_schedule_meta(schedule_filtered, asof_ts=asof_ts)
+    schedule_meta = append_rule_flags(schedule_meta)
     travel_features = compute_travel_features(
         schedule_filtered,
         team_locations=team_locations,
