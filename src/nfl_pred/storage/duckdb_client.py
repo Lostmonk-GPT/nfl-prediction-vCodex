@@ -107,9 +107,9 @@ class DuckDBClient(AbstractContextManager["DuckDBClient"]):
     def register_parquet(self, path: str, view: str) -> None:
         """Create or replace a view selecting from a Parquet file."""
         identifier = _escape_identifier(view)
+        escaped_path = path.replace("'", "''")
         self.connection.execute(
-            f"CREATE OR REPLACE VIEW {identifier} AS SELECT * FROM read_parquet(:path)",
-            {"path": path},
+            f"CREATE OR REPLACE VIEW {identifier} AS SELECT * FROM read_parquet('{escaped_path}')"
         )
 
 
