@@ -7,3 +7,9 @@ features:
   windows:
     short: 4
     mid: 8
+monitoring:
+  retrain_triggers:
+    brier_window_weeks: 4
+    brier_deterioration_pct: 0.1
+    psi_threshold: 0.2
+    psi_feature_count: 5
