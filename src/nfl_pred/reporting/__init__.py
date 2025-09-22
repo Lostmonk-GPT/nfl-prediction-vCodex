@@ -16,6 +16,14 @@ from .metrics import (
     save_metrics_report,
     save_reliability_report,
 )
+from .monitoring_report import (
+    MonitoringComputation,
+    build_monitoring_summary,
+    compute_monitoring_psi_from_features,
+    load_feature_payloads,
+    plot_psi_barchart,
+    prepare_brier_inputs,
+)
 
 __all__ = [
     "ExpandedMetricConfig",
@@ -24,9 +32,15 @@ __all__ = [
     "build_expanded_metrics",
     "compute_classification_metrics",
     "compute_reliability_table",
+    "MonitoringComputation",
     "plot_expanded_metric",
     "plot_reliability_curve",
     "prepare_report_records",
+    "build_monitoring_summary",
+    "compute_monitoring_psi_from_features",
+    "load_feature_payloads",
+    "plot_psi_barchart",
+    "prepare_brier_inputs",
     "save_expanded_metrics",
     "save_metrics_report",
     "save_reliability_report",

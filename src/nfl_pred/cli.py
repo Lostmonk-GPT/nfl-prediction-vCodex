@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+import json
+
 import pandas as pd
 import typer
 
@@ -24,11 +26,20 @@ from nfl_pred.reporting.expanded import (
 from nfl_pred.reporting.metrics import (
     compute_classification_metrics,
     compute_reliability_table,
+    plot_reliability_curve,
     save_metrics_report,
     save_reliability_report,
 )
+from nfl_pred.reporting.monitoring_report import (
+    MonitoringComputation,
+    build_monitoring_summary,
+    compute_monitoring_psi_from_features,
+    load_feature_payloads,
+    plot_psi_barchart,
+)
 from nfl_pred.storage.duckdb_client import DuckDBClient
 from nfl_pred.snapshot import DEFAULT_SNAPSHOT_STAGES, SnapshotStage, run_snapshot_workflow
+from nfl_pred.monitoring.triggers import RetrainTriggerConfig
 
 
 app = typer.Typer(help="Operations CLI for ingestion, feature building, training, and reporting.")
@@ -500,6 +511,182 @@ def report(
         f"Saved metrics and reliability reports for season {season} week {week} to {reports_dir}."
     )
 
+
+@app.command()
+def monitor(
+    season: int = typer.Option(..., help="Season to evaluate for monitoring."),
+    week: int = typer.Option(..., help="Target week to evaluate."),
+    feature_set: str = typer.Option(
+        "mvp_v1", help="Feature set identifier for PSI comparisons."
+    ),
+    config: Optional[Path] = typer.Option(
+        None, "--config", help="Path to configuration YAML.", exists=True, dir_okay=False
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output-dir",
+        help="Override directory for monitoring artifacts (defaults to data/reports/monitoring).",
+        file_okay=False,
+    ),
+) -> None:
+    """Generate monitoring summary, PSI diagnostics, and retrain trigger evaluation."""
+
+    setup_logging()
+    config_path = _resolve_config_path(config)
+    config_obj = load_config(config_path)
+
+    db_path = Path(config_obj.paths.duckdb_path)
+    data_dir = Path(config_obj.paths.data_dir)
+
+    base_output = output_dir or data_dir / "reports" / "monitoring"
+    monitor_dir = base_output / f"season_{season}" / f"week_{week:02d}"
+    monitor_dir.mkdir(parents=True, exist_ok=True)
+
+    with DuckDBClient(str(db_path)) as client:
+        client.apply_schema()
+        predictions = client.read_sql(
+            """
+            SELECT game_id, season, week, asof_ts, p_home_win, p_away_win, model_id, snapshot_at
+            FROM predictions
+            WHERE season = ? AND week <= ?
+            """,
+            [season, week],
+        )
+
+    if predictions.empty:
+        typer.echo("No predictions found for the requested season/week.")
+        raise typer.Exit(code=1)
+
+    schedule_df = _load_raw_schedule(config_path, [season])
+    schedule_slice = schedule_df.loc[schedule_df["week"] <= week].copy()
+    if schedule_slice.empty:
+        typer.echo("No schedule rows available for the requested season/week.")
+        raise typer.Exit(code=1)
+
+    merged = predictions.merge(schedule_slice, on=["season", "week", "game_id"], how="inner")
+    if merged.empty:
+        typer.echo("Unable to join predictions with schedule results for monitoring.")
+        raise typer.Exit(code=1)
+
+    merged["home_score"] = pd.to_numeric(merged.get("home_score"), errors="coerce")
+    merged["away_score"] = pd.to_numeric(merged.get("away_score"), errors="coerce")
+    score_mask = merged[["home_score", "away_score"]].notna().all(axis=1)
+    evaluation_df = merged.loc[score_mask].copy()
+    if evaluation_df.empty:
+        typer.echo("Schedule rows are missing final scores; cannot compute monitoring outputs.")
+        raise typer.Exit(code=1)
+
+    evaluation_df["label_home_win"] = (
+        evaluation_df["home_score"] > evaluation_df["away_score"]
+    ).astype(int)
+
+    current_week_df = evaluation_df.loc[evaluation_df["week"] == week].copy()
+    if current_week_df.empty:
+        typer.echo("No completed games found for the requested week.")
+        raise typer.Exit(code=1)
+
+    metrics_input = current_week_df[["p_home_win", "label_home_win"]].copy()
+    weekly_metrics = compute_classification_metrics(
+        metrics_input,
+        probability_column="p_home_win",
+        label_column="label_home_win",
+    )
+
+    reliability = compute_reliability_table(
+        metrics_input,
+        probability_column="p_home_win",
+        label_column="label_home_win",
+    )
+    reliability_plot_path = plot_reliability_curve(
+        reliability, path=monitor_dir / f"reliability_s{season}_w{week}.png"
+    )
+
+    expanded_config = ExpandedMetricConfig()
+    expanded_metrics = build_expanded_metrics(
+        evaluation_df,
+        probability_column="p_home_win",
+        label_column="label_home_win",
+        config=expanded_config,
+    )
+
+    features_df = load_feature_payloads(db_path, feature_set=feature_set)
+    trigger_config = RetrainTriggerConfig()
+    psi_summary = compute_monitoring_psi_from_features(
+        features_df,
+        season=season,
+        week=week,
+        psi_threshold=trigger_config.psi_threshold,
+    )
+
+    asof_series = pd.to_datetime(
+        predictions.loc[predictions["week"] == week, "asof_ts"], utc=True, errors="coerce"
+    )
+    asof_ts = asof_series.max()
+    if pd.isna(asof_ts):
+        asof_ts = None
+
+    computation: MonitoringComputation = build_monitoring_summary(
+        season=season,
+        week=week,
+        generated_at=datetime.now(timezone.utc),
+        asof_ts=asof_ts,
+        weekly_metrics=weekly_metrics.iloc[0],
+        expanded_metrics=expanded_metrics,
+        psi_summary=psi_summary,
+        trigger_config=trigger_config,
+        expanded_config=expanded_config,
+    )
+
+    summary_path = monitor_dir / f"monitoring_s{season}_w{week}.json"
+    summary_path.write_text(json.dumps(computation.summary, indent=2), encoding="utf-8")
+
+    metrics_path = monitor_dir / f"weekly_metrics_s{season}_w{week}.csv"
+    weekly_metrics.to_csv(metrics_path, index=False)
+
+    reliability_path = monitor_dir / f"reliability_s{season}_w{week}.csv"
+    reliability.to_csv(reliability_path, index=False)
+
+    expanded_path = monitor_dir / f"expanded_metrics_s{season}_w{week}.csv"
+    expanded_metrics.to_csv(expanded_path, index=False)
+
+    psi_summary_path = monitor_dir / f"psi_summary_s{season}_w{week}.csv"
+    psi_summary.feature_psi.to_csv(psi_summary_path, index=False)
+
+    breakdown = psi_summary.feature_psi.attrs.get("breakdown")
+    if isinstance(breakdown, pd.DataFrame) and not breakdown.empty:
+        breakdown_path = monitor_dir / f"psi_breakdown_s{season}_w{week}.csv"
+        breakdown.to_csv(breakdown_path, index=False)
+
+    psi_plot_path = plot_psi_barchart(
+        psi_summary, path=monitor_dir / f"psi_top_features_s{season}_w{week}.png"
+    )
+
+    plot_targets = [
+        ("weekly", "weekly_brier"),
+        ("season_to_date", "season_to_date_brier"),
+        (f"rolling_{expanded_config.rolling_window}", f"rolling{expanded_config.rolling_window}_brier"),
+    ]
+    for window_label, stem in plot_targets:
+        try:
+            plot_expanded_metric(
+                expanded_metrics,
+                metric="brier_score",
+                window=window_label,
+                season=season,
+                reports_dir=monitor_dir,
+                name=f"{stem}_s{season}_w{week}.png",
+                config=expanded_config,
+            )
+        except ValueError:
+            continue
+
+    typer.echo(
+        "Generated monitoring summary at {} with PSI plot {} and reliability plot {}.".format(
+            summary_path,
+            psi_plot_path,
+            reliability_plot_path,
+        )
+    )
 
 def main() -> None:
     """Entry point for console scripts."""
