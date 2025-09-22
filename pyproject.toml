@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "nfl-prediction"
 version = "0.0.0"
 description = "NFL Game Outcome Prediction — project scaffold"
-authors = [{ name = "AI Builder", email = "" }]
+authors = [{ name = "AI Builder", email = "aaron.payne0211@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
