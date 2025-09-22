@@ -68,3 +68,46 @@ Use this checklist to confirm that each PRD requirement is implemented, document
 - [ ] Visibility proxy enforces `asof_ts` filtering and prevents leakage (`src/nfl_pred/visibility.py`, `src/nfl_pred/snapshot/visibility.py`, `tests/test_visibility.py`, `tests/test_snapshot_visibility.py`).
 - [ ] Snapshot replay verifies T-60m freeze compliance (`tests/test_snapshot_replay.py`).
 
+
+---
+
+## Verification Commands
+
+| Checklist ID | Verification command(s) |
+| --- | --- |
+| 1.1 | `poetry run pytest tests/test_snapshot_runner.py::test_snapshot_runner_executes_stages_in_order` |
+| 1.2 | `poetry run pytest tests/test_ingest_injuries.py` |
+| 1.3 | `poetry run pytest tests/test_contracts.py` |
+| 2.1 | `poetry run pytest tests/test_snapshot_runner.py` |
+| 2.2 | `cat docs/snapshot_timeline.md`<br>`cat docs/runbook.md` |
+| 3.1 | `poetry run pytest tests/test_stadiums.py` |
+| 3.2 | `poetry run pytest tests/test_weather_nws_client.py tests/test_weather_meteostat_client.py` |
+| 3.3 | `poetry run pytest tests/test_weather.py` |
+| 4.1 | `poetry run pytest tests/test_rule_flags.py tests/test_playoff_handling.py` |
+| 4.2 | `cat docs/rule_change_policy.md` |
+| 5.1 | `poetry run pytest tests/test_windows.py` |
+| 5.2 | `poetry run pytest tests/test_schedule_meta.py tests/test_travel_rest.py` |
+| 5.3 | `poetry run pytest tests/test_injury_rollups.py tests/test_weather.py` |
+| 5.4 | `poetry run pytest tests/docs/test_feature_spec.py` |
+| 6.1 | `poetry run pytest tests/test_pipeline_train.py` |
+| 7.1 | `poetry run pytest tests/test_pipeline_train.py` |
+| 7.2 | `poetry run pytest tests/test_playoff_handling.py` |
+| 8.1 | `poetry run pytest tests/test_model_baseline.py tests/test_model_models.py` |
+| 8.2 | `poetry run pytest tests/test_model_stacking.py tests/test_stacking_shap.py` |
+| 8.3 | `poetry run pytest tests/test_calibration_selection.py tests/test_model_calibration.py` |
+| 8.4 | `poetry run pytest tests/test_explain_shap.py tests/test_explain_artifacts.py` |
+| 9.1 | `poetry run pytest tests/test_reporting_metrics.py` |
+| 9.2 | `poetry run pytest tests/test_reporting_expanded.py` |
+| 9.3 | `poetry run pytest tests/test_reporting_monitoring.py` |
+| 10.1 | `poetry run pytest tests/test_model_splits.py tests/test_windows_visibility.py` |
+| 10.2 | `poetry run pytest tests/test_pipeline_train.py` |
+| 11.1 | `poetry run pytest tests/test_picks.py` |
+| 12.1 | `poetry run pytest tests/test_monitoring_psi.py tests/test_psi_trigger_boundaries.py` |
+| 12.2 | `poetry run pytest tests/test_monitoring_triggers.py` |
+| 13.1 | `poetry run pytest tests/test_duckdb_client.py tests/test_snapshot_replay.py` |
+| 13.2 | `poetry run pytest tests/test_mlflow_hygiene.py` |
+| 13.3 | `poetry run pytest tests/test_cli.py tests/test_registry_promote.py` |
+| 14.1 | `poetry run pytest tests/docs/test_feature_spec.py`<br>`cat docs/runbook.md` |
+| 14.2 | `poetry run pytest tests/test_audit_trail.py` |
+| 15.1 | `poetry run pytest tests/test_visibility.py tests/test_snapshot_visibility.py` |
+| 15.2 | `poetry run pytest tests/test_snapshot_replay.py` |
