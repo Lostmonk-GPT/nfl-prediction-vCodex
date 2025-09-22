@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Sequence
 
 import json
 
@@ -51,6 +51,18 @@ def _validate_seasons(seasons: Iterable[int]) -> list[int]:
     if not values:
         raise typer.BadParameter("At least one season must be provided.")
     return values
+
+
+def _merge_season_inputs(
+    option_values: Optional[Iterable[int]], extra_values: Iterable[int]
+) -> list[int]:
+    """Combine season inputs from option flags and free arguments."""
+
+    combined: list[int] = []
+    if option_values:
+        combined.extend(int(season) for season in option_values)
+    combined.extend(int(season) for season in extra_values)
+    return _validate_seasons(combined)
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[pd.Timestamp]:
@@ -135,14 +147,20 @@ def _build_stage_schedule(
 
 @app.command()
 def ingest(
-    seasons: List[int] = typer.Option(
-        ..., "--seasons", help="Seasons to ingest, e.g. --seasons 2022 2023.", metavar="[SEASON]..."
-    )
+    seasons: Optional[List[int]] = typer.Option(
+        None,
+        "--seasons",
+        help="Seasons to ingest, e.g. --seasons 2022 2023.",
+        metavar="[SEASON]...",
+    ),
+    extra_seasons: Sequence[int] = typer.Argument(
+        (), metavar="[SEASON]...", help="Additional seasons provided without --seasons."
+    ),
 ) -> None:
     """Ingest schedule, play-by-play, and roster data for the requested seasons."""
 
     setup_logging()
-    season_list = _validate_seasons(seasons)
+    season_list = _merge_season_inputs(seasons, extra_seasons)
 
     schedules_path = ingest_schedules(season_list)
     pbp_paths = ingest_pbp(season_list)
@@ -157,8 +175,16 @@ def ingest(
 
 @app.command("build-features")
 def build_features(
-    seasons: List[int] = typer.Option(
-        ..., "--seasons", help="Seasons to include when assembling features.", metavar="[SEASON]..."
+    seasons: Optional[List[int]] = typer.Option(
+        None,
+        "--seasons",
+        help="Seasons to include when assembling features.",
+        metavar="[SEASON]...",
+    ),
+    extra_seasons: Sequence[int] = typer.Argument(
+        (),
+        metavar="[SEASON]...",
+        help="Additional seasons provided without --seasons.",
     ),
     feature_set: str = typer.Option("mvp_v1", help="Feature set identifier stored with the payload."),
     asof_ts: Optional[str] = typer.Option(
@@ -177,7 +203,7 @@ def build_features(
     """Build the modeling feature matrix and persist it to DuckDB."""
 
     setup_logging()
-    season_list = _validate_seasons(seasons)
+    season_list = _merge_season_inputs(seasons, extra_seasons)
     config_path = _resolve_config_path(config)
 
     schedule_df = _load_raw_schedule(config_path, season_list)
