@@ -58,3 +58,24 @@ CREATE TABLE IF NOT EXISTS runs_meta (
 
 CREATE INDEX IF NOT EXISTS idx_runs_meta_model
     ON runs_meta (model_id, created_at);
+
+CREATE TABLE IF NOT EXISTS audit (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    snapshot_at TIMESTAMP NOT NULL,
+    model_id VARCHAR NOT NULL,
+    asof_ts TIMESTAMP,
+    model_hash VARCHAR NOT NULL,
+    code_version VARCHAR NOT NULL,
+    feature_spec_checksum VARCHAR NOT NULL,
+    upstream_versions_json VARCHAR NOT NULL,
+    input_rows_hash VARCHAR NOT NULL,
+    input_row_hashes_json VARCHAR NOT NULL,
+    input_row_count INTEGER NOT NULL,
+    metadata_json VARCHAR,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (season, week, snapshot_at, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_lookup
+    ON audit (season, week, snapshot_at);
