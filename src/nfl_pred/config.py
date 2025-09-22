@@ -26,11 +26,6 @@ class PathsConfig:
 
 
 @dataclass(frozen=True)
-class MLflowConfig:
-    tracking_uri: str
-
-
-@dataclass(frozen=True)
 class FeatureWindowsConfig:
     short: int
     mid: int
@@ -49,6 +44,31 @@ class TrainingPlayoffsConfig:
 @dataclass(frozen=True)
 class TrainingConfig:
     playoffs: TrainingPlayoffsConfig
+
+
+@dataclass(frozen=True)
+class MLflowRetentionConfig:
+    max_age_days: int | None = 180
+    keep_last_runs: int = 20
+    keep_top_runs: int = 10
+    metric: str = "holdout_brier"
+    metric_goal: str = "min"
+    protect_promoted: bool = True
+    min_metric_value: float | None = None
+
+
+@dataclass(frozen=True)
+class MLflowHygieneConfig:
+    dry_run: bool = True
+    delete_artifacts: bool = False
+    retention: MLflowRetentionConfig = dataclasses.field(default_factory=MLflowRetentionConfig)
+
+
+@dataclass(frozen=True)
+class MLflowConfig:
+    tracking_uri: str
+    experiment: str = "Default"
+    hygiene: MLflowHygieneConfig = dataclasses.field(default_factory=MLflowHygieneConfig)
 
 
 @dataclass(frozen=True)
@@ -135,7 +155,8 @@ def _parse_env_value(value: str) -> Any:
 def _build_config(data: Mapping[str, Any]) -> Config:
     try:
         paths_cfg = PathsConfig(**_expect_mapping(data, "paths"))
-        mlflow_cfg = MLflowConfig(**_expect_mapping(data, "mlflow"))
+
+        mlflow_cfg = _build_mlflow_config(_expect_mapping(data, "mlflow"))
 
         features_data = _expect_mapping(data, "features")
         windows_cfg = FeatureWindowsConfig(**_expect_mapping(features_data, "windows"))
@@ -179,6 +200,74 @@ __all__ = [
     "Config",
     "ConfigError",
     "DEFAULT_CONFIG_PATH",
+    "MLflowConfig",
+    "MLflowHygieneConfig",
+    "MLflowRetentionConfig",
     "dump_config",
     "load_config",
 ]
+
+
+def _build_mlflow_config(data: Mapping[str, Any]) -> MLflowConfig:
+    tracking_uri = data.get("tracking_uri")
+    if not isinstance(tracking_uri, str):
+        raise ConfigError("Configuration 'mlflow.tracking_uri' must be provided as a string.")
+
+    experiment = data.get("experiment", "Default")
+    if not isinstance(experiment, str):
+        raise ConfigError("Configuration 'mlflow.experiment' must be a string if provided.")
+
+    hygiene_cfg = _build_mlflow_hygiene_config(data.get("hygiene"))
+
+    return MLflowConfig(tracking_uri=tracking_uri, experiment=experiment, hygiene=hygiene_cfg)
+
+
+def _build_mlflow_hygiene_config(data: Any) -> MLflowHygieneConfig:
+    if data is None:
+        return MLflowHygieneConfig()
+    if not isinstance(data, Mapping):
+        raise ConfigError("Configuration section 'mlflow.hygiene' must be a mapping.")
+
+    dry_run = data.get("dry_run", True)
+    if not isinstance(dry_run, bool):
+        raise ConfigError("Configuration 'mlflow.hygiene.dry_run' must be boolean.")
+
+    delete_artifacts = data.get("delete_artifacts", False)
+    if not isinstance(delete_artifacts, bool):
+        raise ConfigError(
+            "Configuration 'mlflow.hygiene.delete_artifacts' must be boolean."
+        )
+    retention_cfg = _build_mlflow_retention_config(data.get("retention"))
+
+    return MLflowHygieneConfig(
+        dry_run=dry_run,
+        delete_artifacts=delete_artifacts,
+        retention=retention_cfg,
+    )
+
+
+def _build_mlflow_retention_config(data: Any) -> MLflowRetentionConfig:
+    if data is None:
+        return MLflowRetentionConfig()
+    if not isinstance(data, Mapping):
+        raise ConfigError("Configuration section 'mlflow.hygiene.retention' must be a mapping.")
+
+    supported_keys = {
+        "max_age_days",
+        "keep_last_runs",
+        "keep_top_runs",
+        "metric",
+        "metric_goal",
+        "protect_promoted",
+        "min_metric_value",
+    }
+
+    payload: dict[str, Any] = {}
+    for key, value in data.items():
+        if key not in supported_keys:
+            raise ConfigError(
+                f"Unsupported MLflow retention configuration key '{key}'."
+            )
+        payload[key] = value
+
+    return MLflowRetentionConfig(**payload)

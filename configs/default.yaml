@@ -3,6 +3,17 @@ paths:
   duckdb_path: data/nfl.duckdb
 mlflow:
   tracking_uri: ./mlruns
+  experiment: Default
+  hygiene:
+    dry_run: true
+    delete_artifacts: false
+    retention:
+      max_age_days: 180
+      keep_last_runs: 20
+      keep_top_runs: 10
+      metric: holdout_brier
+      metric_goal: min
+      protect_promoted: true
 features:
   windows:
     short: 4

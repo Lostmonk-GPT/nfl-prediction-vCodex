@@ -16,6 +16,7 @@ from nfl_pred.features.build_features import build_and_store_features
 from nfl_pred.ingest import ingest_pbp, ingest_rosters, ingest_schedules, ingest_teams
 from nfl_pred.logging_setup import setup_logging
 from nfl_pred.pipeline import run_inference_pipeline, run_training_pipeline
+from nfl_pred.registry.hygiene import RetentionPolicy, enforce_retention_policy
 from nfl_pred.reporting.expanded import (
     ExpandedMetricConfig,
     build_expanded_metrics,
@@ -686,6 +687,72 @@ def monitor(
             psi_plot_path,
             reliability_plot_path,
         )
+    )
+
+
+@app.command("mlflow-hygiene")
+def mlflow_hygiene(
+    config: Optional[Path] = typer.Option(
+        None, "--config", help="Path to configuration YAML.", exists=True, dir_okay=False
+    ),
+    dry_run: Optional[bool] = typer.Option(
+        None,
+        "--dry-run/--no-dry-run",
+        help="Override dry-run behaviour. When true, only log actions without deletion.",
+    ),
+    delete_artifacts: Optional[bool] = typer.Option(
+        None,
+        "--delete-artifacts/--keep-artifacts",
+        help="Delete artifact directories for pruned runs when not in dry-run mode.",
+    ),
+) -> None:
+    """Apply MLflow retention policies to prune old experiment runs."""
+
+    setup_logging()
+    config_path = _resolve_config_path(config)
+    config_obj = load_config(config_path)
+
+    hygiene_cfg = config_obj.mlflow.hygiene
+    policy_cfg = hygiene_cfg.retention
+    policy = RetentionPolicy(
+        max_age_days=policy_cfg.max_age_days,
+        keep_last_runs=policy_cfg.keep_last_runs,
+        keep_top_runs=policy_cfg.keep_top_runs,
+        metric=policy_cfg.metric,
+        metric_goal=policy_cfg.metric_goal,
+        protect_promoted=policy_cfg.protect_promoted,
+        min_metric_value=policy_cfg.min_metric_value,
+    )
+
+    effective_dry_run = hygiene_cfg.dry_run if dry_run is None else dry_run
+    effective_delete_artifacts = (
+        hygiene_cfg.delete_artifacts if delete_artifacts is None else delete_artifacts
+    )
+
+    report = enforce_retention_policy(
+        tracking_uri=config_obj.mlflow.tracking_uri,
+        experiment=config_obj.mlflow.experiment,
+        policy=policy,
+        dry_run=effective_dry_run,
+        delete_artifacts=effective_delete_artifacts,
+    )
+
+    action = "Would delete" if report.dry_run else "Deleted"
+    if report.deleted_runs:
+        typer.echo(
+            f"{action} {len(report.deleted_runs)} runs: {', '.join(report.deleted_runs)}"
+        )
+    else:
+        typer.echo("No runs eligible for deletion under current policy.")
+
+    if report.protected_runs:
+        typer.echo(
+            "Protected runs retained: " + ", ".join(report.protected_runs)
+        )
+
+    typer.echo(
+        "Retention scan complete — inspected "
+        f"{report.scanned_runs} runs in experiment '{report.experiment}'."
     )
 
 def main() -> None:
