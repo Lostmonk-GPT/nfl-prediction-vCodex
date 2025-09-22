@@ -22,6 +22,7 @@ from nfl_pred.logging_setup import setup_logging
 from nfl_pred.model.baseline import BaselineClassifier
 from nfl_pred.model.calibration import PlattCalibrator
 from nfl_pred.model.splits import time_series_splits
+from nfl_pred.registry.hygiene import apply_standard_tags, build_standard_tags
 from nfl_pred.storage.duckdb_client import DuckDBClient
 
 LOGGER = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def run_training_pipeline(
     config = load_config(config_path)
 
     mlflow.set_tracking_uri(str(Path(config.mlflow.tracking_uri).expanduser().resolve()))
+    mlflow.set_experiment(config.mlflow.experiment)
 
     features_df = _load_feature_rows(config.paths.duckdb_path, feature_set=feature_set)
     working = _prepare_training_table(features_df, label_column=label_column)
@@ -221,6 +223,19 @@ def run_training_pipeline(
         mlflow.log_artifact(str(model_path), artifact_path="models")
         mlflow.log_artifact(str(reliability_plot_path), artifact_path="plots")
         mlflow.log_artifact(str(config_snapshot_path), artifact_path="config")
+
+        payload = build_standard_tags(
+            seasons=working["season"].unique().tolist(),
+            weeks=working["week"].unique().tolist(),
+            snapshot_ats=_unique_snapshot_times(working.get("snapshot_at")),
+            model_id=model_path.stem,
+            lineage=_resolve_git_commit(),
+        )
+        extra_tags = {
+            "feature_set": feature_set,
+            "label_column": label_column,
+        }
+        apply_standard_tags(payload, extra_tags=extra_tags)
 
         run_id = active_run.info.run_id
 
@@ -395,6 +410,32 @@ def _compute_week_index(seasons: Iterable[int], weeks: Iterable[int]) -> np.ndar
     seasons_arr = np.asarray(list(seasons), dtype=int)
     weeks_arr = np.asarray(list(weeks), dtype=int)
     return seasons_arr * 100 + weeks_arr
+
+
+def _unique_snapshot_times(series: pd.Series | None) -> list[datetime]:
+    if series is None:
+        return []
+    timestamps = pd.to_datetime(series, utc=True, errors="coerce")
+    unique_values = timestamps.dropna().unique()
+    return [pd.Timestamp(value).to_pydatetime() for value in unique_values]
+
+
+def _resolve_git_commit() -> str | None:
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):  # pragma: no cover - defensive
+        LOGGER.debug("Unable to resolve git commit for MLflow tagging.")
+        return None
+
+    commit = result.stdout.strip()
+    return commit or None
 
 
 def _clip_probabilities(values: Sequence[float], *, eps: float = 1e-6) -> np.ndarray:
