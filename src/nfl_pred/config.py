@@ -42,10 +42,21 @@ class FeaturesConfig:
 
 
 @dataclass(frozen=True)
+class TrainingPlayoffsConfig:
+    mode: str = "regular_only"
+
+
+@dataclass(frozen=True)
+class TrainingConfig:
+    playoffs: TrainingPlayoffsConfig
+
+
+@dataclass(frozen=True)
 class Config:
     paths: PathsConfig
     mlflow: MLflowConfig
     features: FeaturesConfig
+    training: TrainingConfig
 
     def as_dict(self) -> Mapping[str, Any]:
         """Return the configuration as a dictionary for downstream use."""
@@ -129,10 +140,27 @@ def _build_config(data: Mapping[str, Any]) -> Config:
         features_data = _expect_mapping(data, "features")
         windows_cfg = FeatureWindowsConfig(**_expect_mapping(features_data, "windows"))
         features_cfg = FeaturesConfig(windows=windows_cfg)
+
+        training_data = data.get("training")
+        if training_data is None:
+            playoffs_cfg = TrainingPlayoffsConfig()
+        else:
+            if not isinstance(training_data, Mapping):
+                raise ConfigError("Configuration section 'training' must be a mapping.")
+
+            playoffs_data = training_data.get("playoffs", {})
+            if playoffs_data is None:
+                playoffs_data = {}
+            if not isinstance(playoffs_data, Mapping):
+                raise ConfigError("Configuration section 'training.playoffs' must be a mapping.")
+
+            playoffs_cfg = TrainingPlayoffsConfig(**playoffs_data)
+
+        training_cfg = TrainingConfig(playoffs=playoffs_cfg)
     except TypeError as exc:  # pragma: no cover - defensive
         raise ConfigError(f"Configuration structure invalid: {exc}") from exc
 
-    return Config(paths=paths_cfg, mlflow=mlflow_cfg, features=features_cfg)
+    return Config(paths=paths_cfg, mlflow=mlflow_cfg, features=features_cfg, training=training_cfg)
 
 
 def _expect_mapping(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:

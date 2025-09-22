@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Final, Iterable, Sequence
 
 import joblib
 import mlflow
@@ -25,6 +25,7 @@ from nfl_pred.model.splits import time_series_splits
 from nfl_pred.storage.duckdb_client import DuckDBClient
 
 LOGGER = logging.getLogger(__name__)
+_PLAYOFF_MODES: Final[frozenset[str]] = frozenset({"include", "regular_only", "postseason_only"})
 
 
 @dataclass(slots=True)
@@ -69,8 +70,23 @@ def run_training_pipeline(
     features_df = _load_feature_rows(config.paths.duckdb_path, feature_set=feature_set)
     working = _prepare_training_table(features_df, label_column=label_column)
 
+    playoff_mode = config.training.playoffs.mode
+    before_rows = len(working)
+    working = _apply_playoff_mode(working, mode=playoff_mode)
+    after_rows = len(working)
+    if after_rows != before_rows:
+        LOGGER.info(
+            "Applied playoff mode '%s': filtered %s of %s rows.",
+            playoff_mode,
+            before_rows - after_rows,
+            before_rows,
+        )
+
     if working.empty:
-        raise ValueError("No eligible training rows available after filtering.")
+        raise ValueError(
+            "No eligible training rows available after filtering. "
+            f"Check playoff mode '{playoff_mode}' and label availability."
+        )
 
     LOGGER.info("Loaded %s rows for training from feature set '%s'.", len(working), feature_set)
 
@@ -290,6 +306,37 @@ def _split_calibration_window(
     train_frame = df.loc[~calibration_mask].copy()
 
     return train_frame, calibration_frame
+
+
+def _apply_playoff_mode(
+    df: pd.DataFrame,
+    *,
+    mode: str,
+    column: str = "is_postseason",
+) -> pd.DataFrame:
+    normalized_mode = mode.lower()
+    if normalized_mode not in _PLAYOFF_MODES:
+        raise ValueError(
+            f"Unsupported playoff mode '{mode}'. Expected one of: {sorted(_PLAYOFF_MODES)}."
+        )
+
+    if column not in df.columns:
+        if normalized_mode != "include":
+            LOGGER.warning(
+                "Playoff mode '%s' requested but column '%s' missing; skipping filter.",
+                normalized_mode,
+                column,
+            )
+        return df.copy()
+
+    mask = df[column].fillna(False).astype(bool)
+
+    if normalized_mode == "include":
+        return df.copy()
+    if normalized_mode == "regular_only":
+        return df.loc[~mask].copy()
+
+    return df.loc[mask].copy()
 
 
 def _evaluate_cross_validation(

@@ -13,3 +13,6 @@ monitoring:
     brier_deterioration_pct: 0.1
     psi_threshold: 0.2
     psi_feature_count: 5
+training:
+  playoffs:
+    mode: regular_only
