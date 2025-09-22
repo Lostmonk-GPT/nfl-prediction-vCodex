@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional
 
 import json
 
@@ -54,14 +54,15 @@ def _validate_seasons(seasons: Iterable[int]) -> list[int]:
 
 
 def _merge_season_inputs(
-    option_values: Optional[Iterable[int]], extra_values: Iterable[int]
+    option_values: Optional[Iterable[int]], extra_values: Optional[Iterable[int]]
 ) -> list[int]:
     """Combine season inputs from option flags and free arguments."""
 
     combined: list[int] = []
     if option_values:
         combined.extend(int(season) for season in option_values)
-    combined.extend(int(season) for season in extra_values)
+    if extra_values:
+        combined.extend(int(season) for season in extra_values)
     return _validate_seasons(combined)
 
 
@@ -153,8 +154,8 @@ def ingest(
         help="Seasons to ingest, e.g. --seasons 2022 2023.",
         metavar="[SEASON]...",
     ),
-    extra_seasons: Sequence[int] = typer.Argument(
-        (), metavar="[SEASON]...", help="Additional seasons provided without --seasons."
+    extra_seasons: Optional[List[int]] = typer.Argument(
+        None, metavar="[SEASON]...", help="Additional seasons provided without --seasons."
     ),
 ) -> None:
     """Ingest schedule, play-by-play, and roster data for the requested seasons."""
@@ -181,8 +182,8 @@ def build_features(
         help="Seasons to include when assembling features.",
         metavar="[SEASON]...",
     ),
-    extra_seasons: Sequence[int] = typer.Argument(
-        (),
+    extra_seasons: Optional[List[int]] = typer.Argument(
+        None,
         metavar="[SEASON]...",
         help="Additional seasons provided without --seasons.",
     ),
