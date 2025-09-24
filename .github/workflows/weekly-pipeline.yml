@@ -1,0 +1,67 @@
+name: Weekly pipeline (cached snapshot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      CACHE_DATE:
+        description: 'Date token for cached snapshot to use (YYYYMMDD)'
+        required: true
+        default: '20250101'
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyarrow duckdb pyyaml nflreadpy
+
+      - name: Run pipeline (cached snapshot)
+        run: |
+          python3 specs/002-use-nfl-game/scripts/build_features.py --snapshot-date ${{ github.event.inputs.CACHE_DATE }}
+          # run full forward validation harness that produces metrics YAML with acceptance_pass
+          python3 specs/002-use-nfl-game/scripts/train_and_validate.py --snapshot-date ${{ github.event.inputs.CACHE_DATE }}
+        env:
+          CACHE_DATE: ${{ github.event.inputs.CACHE_DATE }}
+
+      - name: Check acceptance gate
+        id: gate
+        run: |
+          # find the metrics YAML produced by the harness
+          set -e
+          METRICS=$(ls specs/002-use-nfl-game/outputs/metrics/*.yaml | head -n 1 || true)
+          if [ -z "$METRICS" ]; then
+            echo "No metrics YAML found"; exit 2
+          fi
+          python3 - <<'PY'
+import sys, yaml
+metrics_path = '${METRICS}'
+m = yaml.safe_load(open(metrics_path))
+print('Loaded metrics:', m)
+if not m.get('acceptance_pass'):
+    print('Acceptance gate failed')
+    sys.exit(3)
+print('Acceptance gate passed')
+PY
+
+      - name: Upload artifacts
+        if: ${{ steps.gate.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-artifacts
+          path: |
+            specs/002-use-nfl-game/data/raw/**/manifests/*.json
+            specs/002-use-nfl-game/data/features/**/features.parquet
+            specs/002-use-nfl-game/db/features.duckdb
+            specs/002-use-nfl-game/outputs/predictions/*.csv
+            specs/002-use-nfl-game/outputs/metrics/*.yaml
+            specs/002-use-nfl-game/manifest_*.json
